@@ -281,7 +281,7 @@ void Pet::openMenu(int mouseX, int mouseY) { menu_.open(float(mouseX), float(mou
 
 void Pet::startDrag(int button, int mouseX, int mouseY) {
     int gx = 0, gy = 0;
-    win_->globalPointer(gx, gy);
+    if (!win_->globalPointer(gx, gy)) return;  // 拿不到起点就别开始拖，否则窗口会被甩走
     dragStartGlobalX_ = gx;
     dragStartGlobalY_ = gy;
     dragStartWinX_ = win_->x();
@@ -303,7 +303,7 @@ void Pet::startDrag(int button, int mouseX, int mouseY) {
 void Pet::updateDrag(int mouseX, int mouseY) {
     if (drag_ == Drag::Idle) return;
     int gx = 0, gy = 0;
-    win_->globalPointer(gx, gy);
+    if (!win_->globalPointer(gx, gy)) return;  // 拿不到指针就这一帧不动，别把窗口甩到 (0,0)
     const int dx = gx - dragStartGlobalX_;
     const int dy = gy - dragStartGlobalY_;
     if (drag_ == Drag::Move) {
@@ -411,7 +411,14 @@ void Pet::handleWindowEvents(const std::vector<WinEvent>& events) {
 
 void Pet::updateLook(int winW, int winH) {
     int sx = 0, sy = 0;
-    if (!win_->globalPointer(sx, sy)) return;
+    bool trusted = false;
+    if (!win_->globalPointer(sx, sy, trusted)) {
+        cursorFresh_ = false;
+        cursorTrusted_ = false;
+        return;
+    }
+    cursorFresh_ = true;
+    cursorTrusted_ = trusted;
     cursor_.x = float(sx - win_->x());
     cursor_.y = float(sy - win_->y());
 
@@ -444,6 +451,10 @@ void Pet::frame(float dt, int winW, int winH, GLContext& gl) {
     smile_ += (smileTarget_ - smile_) * std::min(1.0f, dt * 12.0f);
     mousePulseTimer_ += dt;
     if (mousePulseTimer_ > 0.12f) mouseButtonPulse_ = 0;
+
+    // 拖拽兜底：Wayland/XWayland 的指针抓取不一定持续投递 MotionNotify，
+    // 每帧按当前全局指针位置重算一次（updateDrag 是幂等的，只依赖起点与当前位置）
+    if (drag_ != Drag::Idle) updateDrag(0, 0);
 
     updateLook(winW, winH);
 
@@ -489,7 +500,13 @@ void Pet::frame(float dt, int winW, int winH, GLContext& gl) {
         gl.quad(handFrames_[size_t(currentFrame_)], hx, hy, hw, hh, 0.0f, 0.0f, 1.0f, 1.0f, cfg_->l2dFlipX);
     }
 
-    if (cfg_->standardMouse && mouseIdle_.valid()) {
+    // 自绘光标只在“指针真的在桌宠窗口里”时才画：窗口外本来就看不见，而启动时
+    // 位置只有过期的种子（Wayland 下尤其），照画会出现一个钉在窗口里的幽灵光标
+    // 锁定（鼠标穿透）时不画：那时窗口不再接收指针，系统光标本来就正常显示，
+    // 再画一个只会变成两颗光标
+    const bool cursorInside = !state_->locked && cursorFresh_ && cursorTrusted_ && cursor_.x >= 0.0f &&
+                              cursor_.y >= 0.0f && cursor_.x < float(winW) && cursor_.y < float(winH);
+    if (cfg_->standardMouse && mouseIdle_.valid() && cursorInside) {
         const Texture* tex = &mouseIdle_;
         if (mouseLeftDown_ && mouseLeft_.valid())
             tex = &mouseLeft_;
@@ -507,9 +524,20 @@ void Pet::frame(float dt, int winW, int winH, GLContext& gl) {
         const float k = std::min(1.0f, dt * 18.0f * std::max(0.2f, cfg_->mouseSpeed));
         mouseSprite_.x += (cursor_.x - mouseSprite_.x) * k;
         mouseSprite_.y += (cursor_.y - mouseSprite_.y) * k;
+        {
+            static int drawLogs = 0;
+            if (drawLogs < 3) {
+                ++drawLogs;
+                logLine("自绘光标绘制于 (%.0f,%.0f) 窗口=(%d,%d) 尺寸=%dx%d%s", double(mouseSprite_.x),
+                        double(mouseSprite_.y), win_->x(), win_->y(), winW, winH,
+                        drawLogs == 3 ? "（之后不再记）" : "");
+            }
+        }
         gl.setColorParams(Color{1, 1, 1, 0.96f}, Color{1, 1, 1, 1}, Color{0, 0, 0, 0});
         gl.quad(*tex, mouseSprite_.x - mw * 0.5f, mouseSprite_.y - mh * 0.5f, mw, mh);
         gl.resetColorParams();
+    } else if (cfg_->standardMouse) {
+        mouseSpriteInit_ = false;  // 下次真正进入窗口时从当前位置起步，别从旧位置滑过来
     }
 
     menu_.render(gl, *text_);

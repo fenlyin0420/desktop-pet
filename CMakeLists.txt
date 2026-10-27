@@ -40,6 +40,8 @@ add_executable(fxpet
   src/l2d_core.cpp
   src/l2d_model.cpp
   src/global_input.cpp
+  src/evdev_input.cpp
+  src/pointer.cpp
   src/menu.cpp
   src/pet.cpp
 )

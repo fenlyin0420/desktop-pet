@@ -65,11 +65,15 @@ public:
 
     void grabPointer(bool on);
     bool globalPointer(int& x, int& y) const;
+    // trusted = 这个位置是否可信（Wayland 下窗口外的 X 坐标可能已过期）
+    bool globalPointer(int& x, int& y, bool& trusted) const;
     bool screenSize(int& w, int& h) const;
 
     Display* display() const { return dpy_; }
 
 private:
+    void resyncPointerFromEvent(int x, int y, int rootX, int rootY, bool anchor);
+
     Display* dpy_ = nullptr;
     ::Window win_ = 0;
     Colormap colormap_ = 0;

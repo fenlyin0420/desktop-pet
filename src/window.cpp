@@ -11,6 +11,7 @@
 #include <cstring>
 
 #include "config.hpp"
+#include "pointer.hpp"
 
 namespace fx {
 
@@ -226,6 +227,13 @@ void Window::swapBuffers() {
     if (eglDisplay_) eglSwapBuffers(static_cast<EGLDisplay>(eglDisplay_), static_cast<EGLSurface>(eglSurface_));
 }
 
+// 指针事件发生在窗口内时，X 根坐标就是真值（Wayland 下用来校正累积估算）。
+// 抓取期间指针可以跑到窗口外，此时 x_root 可能是外推值，不做校正。
+void Window::resyncPointerFromEvent(int x, int y, int rootX, int rootY, bool anchor) {
+    if (x < 0 || y < 0 || x >= width_ || y >= height_) return;
+    pointerResync(rootX, rootY, anchor);
+}
+
 void Window::pumpEvents(std::vector<WinEvent>& out) {
     if (!dpy_) return;
     while (XPending(dpy_)) {
@@ -234,6 +242,8 @@ void Window::pumpEvents(std::vector<WinEvent>& out) {
         WinEvent we;
         switch (ev.type) {
             case ButtonPress:
+                // 指针在本窗口上：X 根坐标此刻是可信的，用它校正 Wayland 下的累积坐标
+                resyncPointerFromEvent(ev.xbutton.x, ev.xbutton.y, ev.xbutton.x_root, ev.xbutton.y_root, true);
                 we.type = WinEventType::MousePress;
                 we.button = ev.xbutton.button;
                 we.x = ev.xbutton.x;
@@ -242,6 +252,7 @@ void Window::pumpEvents(std::vector<WinEvent>& out) {
                 out.push_back(we);
                 break;
             case ButtonRelease:
+                resyncPointerFromEvent(ev.xbutton.x, ev.xbutton.y, ev.xbutton.x_root, ev.xbutton.y_root, true);
                 we.type = WinEventType::MouseRelease;
                 we.button = ev.xbutton.button;
                 we.x = ev.xbutton.x;
@@ -250,6 +261,7 @@ void Window::pumpEvents(std::vector<WinEvent>& out) {
                 out.push_back(we);
                 break;
             case MotionNotify:
+                resyncPointerFromEvent(ev.xmotion.x, ev.xmotion.y, ev.xmotion.x_root, ev.xmotion.y_root, true);
                 we.type = WinEventType::MouseMove;
                 we.x = ev.xmotion.x;
                 we.y = ev.xmotion.y;
@@ -270,6 +282,11 @@ void Window::pumpEvents(std::vector<WinEvent>& out) {
                 out.push_back(we);
                 break;
             }
+            case EnterNotify:
+                // 窗口自己移到（可能已过期的）X 指针底下也会来 EnterNotify，不能当作锚点
+                resyncPointerFromEvent(ev.xcrossing.x, ev.xcrossing.y, ev.xcrossing.x_root, ev.xcrossing.y_root,
+                                       false);
+                break;
             case FocusOut:
                 we.type = WinEventType::FocusLost;
                 out.push_back(we);
@@ -303,6 +320,7 @@ void Window::pumpEvents(std::vector<WinEvent>& out) {
 
 void Window::move(int x, int y) {
     if (!dpy_ || !win_) return;
+    if (x == x_ && y == y_) return;  // 拖拽兜底每帧都会调用，值没变就别打扰 X
     x_ = x;
     y_ = y;
     XMoveWindow(dpy_, win_, x, y);
@@ -311,6 +329,7 @@ void Window::move(int x, int y) {
 
 void Window::resize(int w, int h) {
     if (!dpy_ || !win_) return;
+    if (w == width_ && h == height_) return;
     width_ = w;
     height_ = h;
     XResizeWindow(dpy_, win_, unsigned(w), unsigned(h));
@@ -388,11 +407,28 @@ void Window::grabPointer(bool on) {
 }
 
 bool Window::globalPointer(int& x, int& y) const {
+    bool trusted = false;
+    return globalPointer(x, y, trusted);
+}
+
+bool Window::globalPointer(int& x, int& y, bool& trusted) const {
+    trusted = false;
     if (!dpy_) return false;
+    // 只有 Wayland 会话才需要 evdev 累积估算（X11 下 XQueryPointer 就是真值，
+    // 即使全局监听退回了 evdev，也不能拿估算值换掉精确值）
+    if (isWaylandSession()) {
+        if (pointerSample(x, y, trusted)) return true;
+        // 没有 evdev 跟踪时退回 X 指针：位置可能已过期，只有窗口内事件校正过才可信
+        trusted = pointerPositionTrusted();
+    }
     ::Window rootRet = 0, childRet = 0;
     int wx = 0, wy = 0;
     unsigned mask = 0;
-    if (!XQueryPointer(dpy_, DefaultRootWindow(dpy_), &rootRet, &childRet, &x, &y, &wx, &wy, &mask)) return false;
+    if (!XQueryPointer(dpy_, DefaultRootWindow(dpy_), &rootRet, &childRet, &x, &y, &wx, &wy, &mask)) {
+        trusted = false;
+        return false;
+    }
+    if (!isWaylandSession()) trusted = true;
     return true;
 }
 

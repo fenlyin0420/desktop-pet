@@ -15,6 +15,7 @@
 #include "gl.hpp"
 #include "global_input.hpp"
 #include "pet.hpp"
+#include "pointer.hpp"
 #include "text.hpp"
 #include "window.hpp"
 
@@ -86,6 +87,7 @@ void usage() {
         "  --mouth-open <v>   强制 ParamMouthOpenY（调试用）\n"
         "  -h, --help         显示帮助\n"
         "\n"
+        "Wayland 会话下全局键鼠需要读 /dev/input：先运行 tools/setup_wayland_input.sh uaccess\n"
         "热键: Ctrl+Shift+T 锁定/解锁（锁定 = 鼠标穿透）\n"
         "      Ctrl+Shift+H 隐藏/显示   Ctrl+Shift+R 重置大小   Ctrl+Shift+Q 退出\n"
         "      鼠标左键拖动 = 移动    右键拖动 = 缩放   右键单击 / 中键 = 菜单   滚轮 = 缩放\n");
@@ -246,6 +248,13 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // Wayland 会话下全局指针坐标只能靠 evdev 累积估算，先建好状态再启动监听
+    {
+        int screenW = 0, screenH = 0;
+        window.screenSize(screenW, screenH);
+        fx::pointerInit(window.display(), screenW, screenH);
+    }
+
     fx::GLContext gl;
     std::string glErr;
     if (!gl.init(&glErr)) {
@@ -332,6 +341,14 @@ int main(int argc, char** argv) {
     if (!input.start(&inputErr)) {
         fx::logLine("%s", inputErr.c_str());
         std::fprintf(stderr, "警告：%s\n", inputErr.c_str());
+    } else {
+        fx::logLine("输入后端：%s（会话 %s）", input.backendName(), fx::sessionTypeName());
+        if (fx::isWaylandSession() && !input.inputAvailable()) {
+            std::fprintf(stderr,
+                         "提示：Wayland 会话下还没有可读的输入设备，按键动画与鼠标跟随不可用。\n"
+                         "      运行 tools/setup_wayland_input.sh check 查看，"
+                         "或 tools/setup_wayland_input.sh uaccess 授权（之后无需重启程序）。\n");
+        }
     }
 
     // 没有 32 位视觉或没有合成器时，逐像素透明不可用 → 用 1 比特裁剪形状
@@ -352,9 +369,23 @@ int main(int argc, char** argv) {
     while (running && !gStop) {
         const double frameStart = nowSeconds();
 
+        // Wayland 下 X 指针一动就说明它刚经过某个 X11 窗口，用真值校正累积估算
+        fx::pointerPollX(window.display());
+
         winEvents.clear();
         window.pumpEvents(winEvents);
         if (!winEvents.empty()) pet.handleWindowEvents(winEvents);
+        if (debugInput) {
+            static int debugTick = 0;
+            if ((++debugTick % 30) == 0) {
+                int px = 0, py = 0;
+                bool valid = false;
+                fx::pointerDebugState(px, py, valid);
+                std::printf("pointer motion_seen=%d (%d,%d) trusted=%d tracking=%d backend=%s\n", valid ? 1 : 0, px, py,
+                            int(fx::pointerPositionTrusted()), int(fx::pointerTrackingActive()), input.backendName());
+                std::fflush(stdout);
+            }
+        }
 
         inputEvents.clear();
         input.poll(inputEvents);

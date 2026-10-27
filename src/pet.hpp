@@ -84,6 +84,8 @@ private:
     int currentFrame_ = -1;
 
     Vec2f cursor_{0, 0};
+    bool cursorFresh_ = false;   // 本帧是否真的取到了指针位置
+    bool cursorTrusted_ = false; // 该位置是否可信（Wayland 下可能只有过期种子）
     Vec2f mouseSprite_{0, 0};
     bool mouseSpriteInit_ = false;
     float mouth_ = 0.0f;
