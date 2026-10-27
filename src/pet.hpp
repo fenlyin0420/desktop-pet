@@ -93,6 +93,8 @@ private:
     float time_ = 0.0f;
     int mouseButtonPulse_ = 0;
     float mousePulseTimer_ = 0.0f;
+    bool mouseLeftDown_ = false;
+    bool mouseRightDown_ = false;
 
     // 修饰键状态（全局监听维护）
     bool ctrl_ = false;

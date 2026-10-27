@@ -35,6 +35,7 @@ static bool readWholeFile(const std::string& path, std::vector<uint8_t>& out) {
 static float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
 bool Live2DModel::load(CubismCore& core, GLContext& gl, const std::string& model3Path, std::string* error) {
+    destroy(gl);
     core_ = &core;
     const std::string base = dirName(model3Path);
 
@@ -52,9 +53,9 @@ bool Live2DModel::load(CubismCore& core, GLContext& gl, const std::string& model
         if (error) *error = "读取 moc3 失败: " + mocPath;
         return false;
     }
-    freeBuffers();
     if (posix_memalign(&mocBuf_, 64, (mocBytes.size() + 63) / 64 * 64) != 0) {
         if (error) *error = "内存分配失败";
+        destroy(gl);
         return false;
     }
     std::memcpy(mocBuf_, mocBytes.data(), mocBytes.size());
@@ -62,16 +63,19 @@ bool Live2DModel::load(CubismCore& core, GLContext& gl, const std::string& model
     CsmMoc* moc = core.ReviveMocInPlace(mocBuf_, unsigned(mocBytes.size()));
     if (!moc) {
         if (error) *error = "moc3 解析失败（Core 版本不支持）: " + mocPath;
+        destroy(gl);
         return false;
     }
     const unsigned modelSize = core.GetSizeofModel(moc);
     if (posix_memalign(&modelBuf_, 64, (modelSize + 63) / 64 * 64) != 0) {
         if (error) *error = "内存分配失败";
+        destroy(gl);
         return false;
     }
     model_ = core.InitializeModelInPlace(moc, modelBuf_, modelSize);
     if (!model_) {
         if (error) *error = "模型初始化失败: " + mocPath;
+        destroy(gl);
         return false;
     }
 
@@ -90,6 +94,7 @@ bool Live2DModel::load(CubismCore& core, GLContext& gl, const std::string& model
         Texture t = gl.loadTexture(texPath, &err);
         if (!t.valid()) {
             if (error) *error = err;
+            destroy(gl);
             return false;
         }
         textures_.push_back(t);
@@ -173,6 +178,13 @@ void Live2DModel::destroy(GLContext& gl) {
     for (Texture& t : textures_) gl.destroyTexture(t);
     textures_.clear();
     freeBuffers();
+    drawables_.clear();
+    drawableParentPart_.clear();
+    partParentPart_.clear();
+    drawOrder_.clear();
+    paramIndex_.clear();
+    partIndex_.clear();
+    drawableCount_ = 0;
 }
 
 float Live2DModel::effectiveOpacity(int drawableIndex, const float* drawableOpacities) const {
@@ -494,9 +506,16 @@ void Live2DModel::render(GLContext& gl, float x, float y, float w, float h, bool
             const bool okBegin = (bw > 0 && bh > 0 && bw < 4096 && bh < 4096) ? gl.beginMask(bw, bh) : false;
             if (okBegin) {
                 gl.setBlend(Blend::Normal);
-                gl.setColorParams(Color{1, 1, 1, 1}, Color{1, 1, 1, 1}, Color{0, 0, 0, 0});
                 for (size_t k = 0; k < d.masks.size(); ++k) {
+                    const int mi = d.masks[k];
+                    if (mi < 0 || mi >= drawableCount_) continue;
+                    if (respectVisible_ && !(dynFlags[mi] & kIsVisible)) continue;
                     if (maskTexIndex[k] < 0 || maskTexIndex[k] >= int(textures_.size())) continue;
+                    float maskAlpha = effectiveOpacity(mi, opacities);
+                    if (forceFull_) maskAlpha = std::max(1.0f, maskAlpha);
+                    else if (forceOpaque_) maskAlpha = 1.0f;
+                    if (maskAlpha <= 0.001f) continue;
+                    gl.setColorParams(Color{1, 1, 1, maskAlpha}, Color{1, 1, 1, 1}, Color{0, 0, 0, 0});
                     // 顶点平移到遮罩缓冲的局部坐标
                     for (size_t vi = 0; vi < maskPos[k].size() / 2; ++vi) {
                         maskPos[k][vi * 2 + 0] -= float(bx);

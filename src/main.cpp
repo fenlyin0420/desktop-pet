@@ -113,7 +113,7 @@ int main(int argc, char** argv) {
     std::vector<std::string> paramOverrides;
     std::vector<std::string> partOverrides;
     std::string onlyList, hideList;
-    bool respectVisible = false;
+    bool respectVisible = true;
     bool forceFullAll = false;
     bool noMasks = false;
     bool masksInvert = false;
@@ -281,7 +281,10 @@ int main(int argc, char** argv) {
         return out;
     };
     if (respectVisible) pet.debugSetRespectVisible(true);
-    if (forceFullAll) pet.debugSetForceFull(true);
+    if (forceFullAll) {
+        pet.debugSetRespectVisible(false);
+        pet.debugSetForceFull(true);
+    }
     if (noMasks) pet.debugSetDisableMasks(true);
     if (masksInvert) pet.debugSetForceInvertedMask(true);
     if (opaqueAll) pet.debugSetForceOpaque(true);

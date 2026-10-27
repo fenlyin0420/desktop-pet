@@ -65,6 +65,7 @@ public:
 
     void grabPointer(bool on);
     bool globalPointer(int& x, int& y) const;
+    bool screenSize(int& w, int& h) const;
 
     Display* display() const { return dpy_; }
 

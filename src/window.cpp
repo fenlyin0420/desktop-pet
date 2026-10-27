@@ -396,4 +396,12 @@ bool Window::globalPointer(int& x, int& y) const {
     return true;
 }
 
+bool Window::screenSize(int& w, int& h) const {
+    if (!dpy_) return false;
+    const int screen = DefaultScreen(dpy_);
+    w = DisplayWidth(dpy_, screen);
+    h = DisplayHeight(dpy_, screen);
+    return w > 0 && h > 0;
+}
+
 }  // namespace fx

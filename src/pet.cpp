@@ -43,6 +43,7 @@ bool Pet::init(Config& cfg, State& st, GLContext& gl, TextRenderer& text, Window
 }
 
 void Pet::reloadModel(GLContext& gl) {
+    if (model_) model_->destroy(gl);
     model_.reset();
     modelFallback_ = true;
     modelError_.clear();
@@ -252,10 +253,12 @@ void Pet::handleGlobalInput(std::vector<InputEvent>& events, const GlobalInput& 
         } else if (ev.type == InputEvent::Type::KeyUp) {
             releaseKey(ev.code);
         } else if (ev.type == InputEvent::Type::MouseDown || ev.type == InputEvent::Type::MouseUp) {
-            // 锁定时窗口收不到鼠标事件，用全局事件驱动反应
-            if (!state_->locked) continue;
-            if (ev.type == InputEvent::Type::MouseDown) {
-                mouseButtonPulse_ = ev.code == 1 ? 1 : (ev.code == 3 ? 2 : (ev.code == 5 || ev.code == 6 ? 3 : 0));
+            const bool down = ev.type == InputEvent::Type::MouseDown;
+            if (ev.code == 1) mouseLeftDown_ = down;
+            if (ev.code == 3) mouseRightDown_ = down;
+            if (down) {
+                mouseButtonPulse_ = ev.code == 1 ? 1 : (ev.code == 3 ? 2 : (ev.code == 4 || ev.code == 5 || ev.code == 6 ? 3 : 0));
+                mousePulseTimer_ = 0.0f;
                 mouthTarget_ = 0.6f;
             }
         }
@@ -323,6 +326,13 @@ void Pet::handleWindowEvents(const std::vector<WinEvent>& events) {
     for (const WinEvent& ev : events) {
         switch (ev.type) {
             case WinEventType::MousePress: {
+                if (ev.button == 1) mouseLeftDown_ = true;
+                if (ev.button == 3) mouseRightDown_ = true;
+                if (ev.button == 1 || ev.button == 3) {
+                    mouseButtonPulse_ = ev.button == 1 ? 1 : 2;
+                    mousePulseTimer_ = 0.0f;
+                    mouthTarget_ = 0.6f;
+                }
                 if (state_->locked) break;
                 if (ev.button == 4 || ev.button == 5) {
                     const float factor = ev.button == 4 ? 1.06f : 0.94f;
@@ -355,6 +365,8 @@ void Pet::handleWindowEvents(const std::vector<WinEvent>& events) {
                 break;
             }
             case WinEventType::MouseRelease: {
+                if (ev.button == 1) mouseLeftDown_ = false;
+                if (ev.button == 3) mouseRightDown_ = false;
                 win_->grabPointer(false);
                 if (ev.button == 3 && rightPressed_) {
                     rightPressed_ = false;
@@ -402,7 +414,14 @@ void Pet::updateLook(int winW, int winH) {
     if (!win_->globalPointer(sx, sy)) return;
     cursor_.x = float(sx - win_->x());
     cursor_.y = float(sy - win_->y());
-    const float nx = (cursor_.x - float(winW) * 0.5f) / (float(winW) * 0.5f + 1.0f);
+
+    // 横向跟随使用桌面绝对坐标，避免宠物窗口位置把屏幕外的移动全部夹成 -1/1。
+    int screenW = winW;
+    int screenH = winH;
+    const bool haveScreenSize = win_->screenSize(screenW, screenH);
+    const float nx = haveScreenSize
+                         ? (float(sx) - float(screenW) * 0.5f) / (float(screenW) * 0.5f + 1.0f)
+                         : (cursor_.x - float(winW) * 0.5f) / (float(winW) * 0.5f + 1.0f);
     const float ny = (cursor_.y - float(winH) * 0.55f) / (float(winH) * 0.55f + 1.0f);
     if (model_) {
         const float x = std::max(-1.0f, std::min(1.0f, nx));
@@ -431,7 +450,7 @@ void Pet::frame(float dt, int winW, int winH, GLContext& gl) {
     if (model_) {
         model_->setMouthOpen(mouthOpenOverride_ >= 0.0f ? mouthOpenOverride_ : mouth_ * 0.85f);
         model_->setEyeSmile(smile_);
-        model_->setMouseButtons(mouseButtonPulse_ == 1, mouseButtonPulse_ == 2);
+        model_->setMouseButtons(mouseLeftDown_, mouseRightDown_);
         // 参数必须在 csmUpdateModel 之前写入，否则本帧不生效
         if (model_->hasParam(cfg_->watermarkParam)) {
             const bool hidden = cfg_->hideWatermark || watermarkHidden_;
@@ -467,14 +486,14 @@ void Pet::frame(float dt, int winW, int winH, GLContext& gl) {
         hx += cfg_->handOffset.x * hw;
         hy += cfg_->handOffset.y * hh;
         gl.setColorParams(Color{1, 1, 1, 1}, Color{1, 1, 1, 1}, Color{0, 0, 0, 0});
-        gl.quad(handFrames_[size_t(currentFrame_)], hx, hy, hw, hh);
+        gl.quad(handFrames_[size_t(currentFrame_)], hx, hy, hw, hh, 0.0f, 0.0f, 1.0f, 1.0f, cfg_->l2dFlipX);
     }
 
     if (cfg_->standardMouse && mouseIdle_.valid()) {
         const Texture* tex = &mouseIdle_;
-        if (mouseButtonPulse_ == 1 && mouseLeft_.valid())
+        if (mouseLeftDown_ && mouseLeft_.valid())
             tex = &mouseLeft_;
-        else if (mouseButtonPulse_ == 2 && mouseRight_.valid())
+        else if (mouseRightDown_ && mouseRight_.valid())
             tex = &mouseRight_;
         else if (mouseButtonPulse_ == 3 && mouseSide_.valid())
             tex = &mouseSide_;
