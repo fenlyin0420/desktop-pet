@@ -1,0 +1,6 @@
+build/
+compile_commands.json
+lib/*.a
+lib/*.so
+lib/live2d/
+.cache/
