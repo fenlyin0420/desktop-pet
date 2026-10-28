@@ -1,10 +1,12 @@
 #include "config.hpp"
 
+#include <algorithm>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <glob.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -52,11 +54,31 @@ static std::string homeDir() {
     return (h && *h) ? std::string(h) : std::string(".");
 }
 
+static std::vector<std::string> globSorted(const std::string& pattern) {
+    std::vector<std::string> out;
+    glob_t g{};
+    if (glob(pattern.c_str(), 0, nullptr, &g) == 0) {
+        for (size_t i = 0; i < g.gl_pathc; ++i) out.push_back(g.gl_pathv[i]);
+    }
+    globfree(&g);
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+std::string findModel3(const std::string& assetDir) {
+    if (assetDir.empty()) return std::string();
+    // 扁平布局：<assetDir>/<模型名>/<模型名>.model3.json，其次 <assetDir>/*.model3.json
+    for (const std::string& pat : {assetDir + "/*/*.model3.json", assetDir + "/*.model3.json"}) {
+        const std::vector<std::string> hits = globSorted(pat);
+        if (!hits.empty()) return hits.front();
+    }
+    return std::string();
+}
+
 static std::vector<std::string> candidateAssetDirs(const std::string& base) {
     return {
         envOr("FXPET_ASSETS", ""),
         base + "/assets",
-        base + "/assets/img/..",
         base,
         std::string("assets"),
         base + "/../assets",
@@ -70,7 +92,9 @@ void resolvePaths(Config& cfg) {
         if (cand.empty()) continue;
         std::string dir = cand;
         if (dir.size() > 1 && dir.back() == '/') dir.pop_back();
-        if (isDir(dir + "/img")) {
+        // 资源目录 = 图片/模型直接放在其下（没有 img/standard 中间层）
+        if (!isDir(dir)) continue;
+        if (!findModel3(dir).empty() || exists(dir + "/config.json")) {
             cfg.assetDir = dir;
             break;
         }
@@ -187,8 +211,6 @@ bool loadConfig(Config& cfg, std::string* error) {
         cfg.l2dCorrect = static_cast<float>(linuxCfg["l2d_scale"].num(1.0));
         cfg.l2dFlipX = linuxCfg["l2d_flip_x"].boolean(false);
         if (cfg.l2dCorrect <= 0.05f) cfg.l2dCorrect = 1.0f;
-        if (linuxCfg.has("watermark_param")) cfg.watermarkParam = linuxCfg["watermark_param"].str();
-        cfg.hideWatermark = linuxCfg["hide_watermark"].boolean(true);
         if (linuxCfg.has("hand_part")) cfg.handPart = linuxCfg["hand_part"].str();
         if (linuxCfg.has("hand_drawables")) {
             cfg.handDrawables.clear();
@@ -202,8 +224,6 @@ bool loadConfig(Config& cfg, std::string* error) {
                 start = comma + 1;
             }
         }
-        cfg.watermarkOn = static_cast<float>(linuxCfg["watermark_on"].num(cfg.watermarkOn));
-        cfg.watermarkOff = static_cast<float>(linuxCfg["watermark_off"].num(cfg.watermarkOff));
     }
     return true;
 }

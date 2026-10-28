@@ -18,7 +18,7 @@ static const int kVkH = 0x48;
 static const int kVkR = 0x52;
 static const int kVkQ = 0x51;
 
-static std::string imagePath(const Config& cfg, const std::string& rel) { return cfg.assetDir + "/img/" + rel; }
+static std::string imagePath(const Config& cfg, const std::string& rel) { return cfg.assetDir + "/" + rel; }
 
 bool Pet::init(Config& cfg, State& st, GLContext& gl, TextRenderer& text, Window& win, std::string* error) {
     cfg_ = &cfg;
@@ -57,7 +57,12 @@ void Pet::reloadModel(GLContext& gl) {
     }
     auto fresh = std::make_unique<Live2DModel>();
     std::string err;
-    const std::string modelPath = imagePath(*cfg_, "standard/cat_model/cat.model3.json");
+    const std::string modelPath = findModel3(cfg_->assetDir);
+    if (modelPath.empty()) {
+        modelError_ = "资源目录里找不到 *.model3.json（已搜过 " + cfg_->assetDir + "），已退回静态图";
+        logLine("%s", modelError_.c_str());
+        return;
+    }
     if (!fresh->load(core_, gl, modelPath, &err)) {
         modelError_ = err + "，已退回静态图";
         logLine("模型加载失败: %s", err.c_str());
@@ -78,7 +83,7 @@ void Pet::loadAssets(GLContext& gl) {
     vkToFrame_.clear();
     for (size_t i = 0; i < cfg_->standardHand.size(); ++i) {
         char rel[64];
-        std::snprintf(rel, sizeof(rel), "standard/hand/%zu.png", i);
+        std::snprintf(rel, sizeof(rel), "hand/%zu.png", i);
         std::string err;
         Texture t = gl.loadTexture(imagePath(*cfg_, rel), &err);
         if (t.valid()) {
@@ -90,11 +95,11 @@ void Pet::loadAssets(GLContext& gl) {
     }
 
     std::string err;
-    mouseIdle_ = gl.loadTexture(imagePath(*cfg_, "standard/mouse.png"), &err);
-    mouseLeft_ = gl.loadTexture(imagePath(*cfg_, "standard/mouse_left.png"), &err);
-    mouseRight_ = gl.loadTexture(imagePath(*cfg_, "standard/mouse_right.png"), &err);
-    mouseSide_ = gl.loadTexture(imagePath(*cfg_, "standard/mouse_side.png"), &err);
-    catFallback_ = gl.loadTexture(imagePath(*cfg_, "standard/cat.png"), &err);
+    mouseIdle_ = gl.loadTexture(imagePath(*cfg_, "mouse.png"), &err);
+    mouseLeft_ = gl.loadTexture(imagePath(*cfg_, "mouse_left.png"), &err);
+    mouseRight_ = gl.loadTexture(imagePath(*cfg_, "mouse_right.png"), &err);
+    mouseSide_ = gl.loadTexture(imagePath(*cfg_, "mouse_side.png"), &err);
+    catFallback_ = gl.loadTexture(imagePath(*cfg_, "cat.png"), &err);
 
     logLine("资源加载完成：手部帧 %zu，键位映射 %zu", handFrames_.size(), vkToFrame_.size());
 }
@@ -263,7 +268,6 @@ void Pet::handleGlobalInput(std::vector<InputEvent>& events, const GlobalInput& 
             }
         }
     }
-    watermarkHidden_ = ctrl_;
 }
 
 bool Pet::runMenuAction(int action) {
@@ -463,10 +467,6 @@ void Pet::frame(float dt, int winW, int winH, GLContext& gl) {
         model_->setEyeSmile(smile_);
         model_->setMouseButtons(mouseLeftDown_, mouseRightDown_);
         // 参数必须在 csmUpdateModel 之前写入，否则本帧不生效
-        if (model_->hasParam(cfg_->watermarkParam)) {
-            const bool hidden = cfg_->hideWatermark || watermarkHidden_;
-            model_->setParam(cfg_->watermarkParam, hidden ? cfg_->watermarkOff : cfg_->watermarkOn);
-        }
         model_->update(dt);
     }
 

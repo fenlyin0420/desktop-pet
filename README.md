@@ -11,7 +11,7 @@
 | --- | --- |
 | 无边框置顶 WPF 窗口 | X11 override-redirect 窗口 + `_NET_WM_STATE_ABOVE`，32 位 ARGB 视觉 |
 | 低级键盘钩子 | 全局键鼠监听：X11 用 XInput2 raw；Wayland 用 evdev 直读（见 [Wayland 会话](#wayland-会话)） |
-| 按键 → 手部帧贴图 | 同一套 `config.json` 键位表，映射到 `img/standard/hand/*.png` |
+| 按键 → 手部帧贴图 | 同一套 `config.json` 键位表，映射到 `hand/*.png` |
 | 按住 Ctrl 取消水印 | 按住 Ctrl 隐藏模型水印参数 |
 | `Ctrl+Shift+T` 锁定 | 相同热键，锁定 = 鼠标穿透（XShape 输入区域置空） |
 | 右键托盘图标菜单 | 窗口内自绘菜单（右键单击 / 中键） |
@@ -45,7 +45,7 @@ cmake --build build -j$(nproc)
 也可以用本地已下载的 SDK：`tools/fetch_live2d_core.sh <SDK.zip>`，
 或把 `.so` 放到 `lib/`（此时运行时 dlopen，无需重新编译）。
 
-没有 Core 时程序仍能启动，会退化为静态图 `img/standard/cat.png`。
+没有 Core 时程序仍能启动，会退化为静态图 `cat.png`。
 
 ## 操作
 
@@ -150,8 +150,6 @@ Linux 版特有的字段在 `linux` 段：
 | `l2d_scale` | `1.0` | 模型缩放，`1.0` = 正好铺满窗口；Windows 版的 `decoration.l2d_correct` 语义不同，不沿用 |
 | `l2d_flip_x` | `false` | 水平镜像模型（默认不镜像，否则模型自带的水印文字会反） |
 | `hand_part` | `"Part50"` | 按键时隐藏的模型部件（模型自带的静止手）；留空则不隐藏 |
-| `watermark_param` | `"Param24"` | 水印参数 id |
-| `watermark_on` / `watermark_off` | `0.0` / `1.0` | 水印显示 / 隐藏时该参数取值（这个模型是 `Param24=1` 时隐藏） |
 
 窗口位置与大小在 `~/.config/fxpet/state.ini`：`window=x,y,w,h`、`locked`、`visible`。
 日志在 `~/.local/state/fxpet/fxpet.log`。
@@ -215,7 +213,7 @@ X-GNOME-Autostart-enabled=true
 ## 尚未实现（相对 Windows 版）
 
 - 手柄模式、键盘/钢琴模式（免费版本身也没有这些素材的完整逻辑）
-- 按键音效（`img/*/sounds/*.flac` 未接入音频输出）
+- 按键音效（`sounds/*.flac` 未接入音频输出）
 - 双机网络同步（`config.json` 的 `network` 段）
 - 表情与动作热键（免费版模型没有 motion3/exp3 之外的可用表情）
 

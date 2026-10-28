@@ -299,8 +299,8 @@ void Live2DModel::update(float dt) {
     setParam("ParamBodyAngleX", bodyX_ * 10.0f);
     setParam("ParamBodyAngleY", bodyY_ * 10.0f);
     setParam("ParamBodyAngleZ", lookX_ * 5.0f);
-    setParam("ParamMouseX", mouseX_ * 30.0f);
-    setParam("ParamMouseY", mouseY_ * 30.0f);
+    setParam("ParamMouseX", -mouseX_ * 30.0f);
+    setParam("ParamMouseY", -mouseY_ * 30.0f);
     setParam("ParamMouseLeftDown", mouseLeftDown_ ? 1.0f : 0.0f);
     setParam("ParamMouseRightDown", mouseRightDown_ ? 1.0f : 0.0f);
     setParam("ParamBreath", breath);

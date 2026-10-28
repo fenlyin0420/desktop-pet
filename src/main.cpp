@@ -63,11 +63,10 @@ void usage() {
         "fxpet —— 绯雪 Linux 桌宠\n"
         "用法: fxpet [选项]\n"
         "  --config <文件>    指定 config.json\n"
-        "  --assets <目录>    指定资源目录（含 img/ 的目录）\n"
+        "  --assets <目录>    指定资源目录（模型与图片直接在其下）\n"
         "  --size <WxH>       覆盖窗口尺寸\n"
         "  --l2d-correct <x>  Live2D 缩放系数（1.0 = 铺满窗口）\n"
         "  --no-flip          不水平翻转 Live2D 模型\n"
-        "  --watermark <v>    水印参数值\n"
         "  --no-mouse         不绘制鼠标指针贴图\n"
         "  --shape            强制用 1 比特裁剪（没有合成器时更可靠）\n"
         "  --no-shape          不用裁剪形状（逐像素透明）\n"
@@ -127,9 +126,7 @@ int main(int argc, char** argv) {
     std::string liveFramePath;
     int dumpFrameCountdown = 0;
     bool forceNoShape = false;
-    bool hasWatermark = false;
     float overrideCorrect = -1.0f;
-    float overrideWatermark = 0.0f;
     int pressVk = 0;
     int forceW = 0, forceH = 0;
 
@@ -147,9 +144,6 @@ int main(int argc, char** argv) {
             std::sscanf(argv[++i], "%dx%d", &forceW, &forceH);
         } else if (a == "--l2d-correct" && i + 1 < argc) {
             overrideCorrect = float(std::atof(argv[++i]));
-        } else if (a == "--watermark" && i + 1 < argc) {
-            overrideWatermark = float(std::atof(argv[++i]));
-            hasWatermark = true;
         } else if (a == "--press" && i + 1 < argc) {
             pressVk = std::atoi(argv[++i]);
         } else if (a == "--no-mouse") {
@@ -206,10 +200,6 @@ int main(int argc, char** argv) {
     if (noMouse) cfg.standardMouse = false;
     if (noFlip) cfg.l2dFlipX = false;
     if (overrideCorrect > 0.0f) cfg.l2dCorrect = overrideCorrect;
-    if (hasWatermark) {
-        cfg.watermarkOn = overrideWatermark;
-        cfg.watermarkOff = overrideWatermark;
-    }
 
     fx::State state;
     fx::loadState(cfg, state);

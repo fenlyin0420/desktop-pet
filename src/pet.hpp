@@ -44,9 +44,6 @@ public:
     void debugSetParts(const std::map<std::string, float>& m);
     void dumpModel();
 
-    // Ctrl 按住时隐藏水印
-    void setWatermarkHidden(bool hidden) { watermarkHidden_ = hidden; }
-
 private:
     void loadAssets(GLContext& gl);
     void reloadModel(GLContext& gl);
@@ -102,7 +99,6 @@ private:
     bool ctrl_ = false;
     bool shift_ = false;
     bool alt_ = false;
-    bool watermarkHidden_ = false;
 
     Drag drag_ = Drag::Idle;
     bool rightPressed_ = false;
