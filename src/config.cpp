@@ -210,6 +210,7 @@ bool loadConfig(Config& cfg, std::string* error) {
     if (linuxCfg.isObject()) {
         cfg.l2dCorrect = static_cast<float>(linuxCfg["l2d_scale"].num(1.0));
         cfg.l2dFlipX = linuxCfg["l2d_flip_x"].boolean(false);
+        cfg.physics = linuxCfg["physics"].boolean(true);
         if (cfg.l2dCorrect <= 0.05f) cfg.l2dCorrect = 1.0f;
         if (linuxCfg.has("hand_part")) cfg.handPart = linuxCfg["hand_part"].str();
         if (linuxCfg.has("hand_drawables")) {

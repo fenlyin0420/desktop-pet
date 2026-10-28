@@ -149,6 +149,7 @@ Linux 版特有的字段在 `linux` 段：
 | --- | --- | --- |
 | `l2d_scale` | `1.0` | 模型缩放，`1.0` = 正好铺满窗口；Windows 版的 `decoration.l2d_correct` 语义不同，不沿用 |
 | `l2d_flip_x` | `false` | 水平镜像模型（默认不镜像，否则模型自带的水印文字会反） |
+| `physics` | `true` | 是否应用模型自带的 `physics3.json` 物理演算（头发、尾巴等随动作摆动） |
 | `hand_part` | `"Part50"` | 按键时隐藏的模型部件（模型自带的静止手）；留空则不隐藏 |
 
 窗口位置与大小在 `~/.config/fxpet/state.ini`：`window=x,y,w,h`、`locked`、`visible`。
@@ -171,6 +172,8 @@ Linux 版特有的字段在 `linux` 段：
   与官方 SDK 的渲染结果一致；`--masks-invert` 可切回按标志处理做对比。
 - **参数必须在 `csmUpdateModel()` 之前写**：形变是 update 时算的，update 之后再写只影响
   不透明度类参数，看起来就像“参数没反应”。调试用的 `--param` / `--eye-open` 现在是钉在 update 前写入。
+- **物理演算也在 `csmUpdateModel()` 之前求值**：`physics3.json` 的输出写回参数（头发、尾巴旋转等），
+  写晚了就不参与本帧形变。物理按 `Meta.Fps` 固定步长推进，不足一步的剩余时间用前后两次结果插值。
 - **自绘光标只在“指针确实位于桌宠窗口内且位置可信”时绘制**：窗口外本来就被裁掉看不见，
   而启动时指针坐标可能只有一个过期的种子（Wayland 下尤其），照画会得到一颗钉在窗口里的
   幽灵光标；指针真的在窗口里动过（或经过别的 X11 窗口）之后才恢复正常。锁定（鼠标穿透）
@@ -208,7 +211,7 @@ X-GNOME-Autostart-enabled=true
   换新一点的 SDK（`CUBISM_SDK_VERSION=5-r.5 tools/fetch_live2d_core.sh`）。
 - **调试工具**：`--shot out.png` 渲染一帧存图、`--press <vk>` 模拟按键、`--dump` 打印
   模型参数/部件、`--debug-input` 打印全局键鼠事件、`--dump-frame out.png` 抓运行时画面、
-  `--shape` 强制硬边裁剪、`--l2d-correct` 临时改缩放。
+  `--shape` 强制硬边裁剪、`--l2d-correct` 临时改缩放、`--no-physics` 关闭物理演算做对比。
 
 ## 尚未实现（相对 Windows 版）
 
@@ -224,6 +227,7 @@ src/window.*     X11 + EGL 窗口、裁剪形状、点击穿透
 src/gl.*         GLES2 渲染（预乘 alpha、任意三角网格、FBO、模板遮罩）
 src/l2d_core.*   Cubism Core 装载（静态链接或运行时 dlopen）
 src/l2d_model.*  moc3 模型：参数、部件、drawable、遮罩、按 renderOrder 绘制
+src/l2d_physics.* physics3.json 物理演算（按官方 CubismPhysics 算法）
 src/global_input.* 全局键鼠：X11 用 XInput2 raw / Wayland 用 evdev → 统一的 VK 码
 src/evdev_input.*  直接读 /dev/input/event*（Wayland 下的全局键鼠，含热插拔）
 src/pointer.*      全局指针位置：X11 直接查询，Wayland 用 evdev 相对位移累积 + 校正

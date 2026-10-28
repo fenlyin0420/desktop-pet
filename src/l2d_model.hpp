@@ -9,6 +9,7 @@
 
 #include "gl.hpp"
 #include "l2d_core.hpp"
+#include "l2d_physics.hpp"
 
 namespace fx {
 
@@ -41,6 +42,8 @@ public:
     void setMouseButtons(bool left, bool right);
     void setBreathEnabled(bool on) { breath_ = on; }
     void setAutoBlink(bool on) { autoBlink_ = on; }
+    void setPhysicsEnabled(bool on) { physics_.setEnabled(on); }
+    bool hasPhysics() const { return physics_.valid(); }
 
     // 布局：correct 为整体缩放系数，offset 为相对画布尺寸的归一化偏移（y 正向下）
     struct Layout {
@@ -91,6 +94,7 @@ private:
 
     CubismCore* core_ = nullptr;
     CsmModel* model_ = nullptr;
+    Physics physics_;
     // Core 要求 64 字节对齐的 moc/model 缓冲区
     void* mocBuf_ = nullptr;
     void* modelBuf_ = nullptr;

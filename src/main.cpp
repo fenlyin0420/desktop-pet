@@ -82,6 +82,7 @@ void usage() {
         "  --no-masks         不做遮罩裁剪（调试用）\n"
         "  --masks-invert     按 Core 的反向遮罩标志处理（默认行为）\n"
         "  --opaque           所有 drawable 按不透明绘制（调试用）\n"
+        "  --no-physics       关闭 physics3.json 物理演算（调试对比用）\n"
         "  --eye-open <v>     强制 ParamEyeLOpen/ROpen（调试用）\n"
         "  --mouth-open <v>   强制 ParamMouthOpenY（调试用）\n"
         "  -h, --help         显示帮助\n"
@@ -119,6 +120,7 @@ int main(int argc, char** argv) {
     bool noMasks = false;
     bool masksInvert = false;
     bool opaqueAll = false;
+    bool physicsOff = false;
     float eyeOpen = 0.0f, mouthOpen = 0.0f;
     bool hasEyeOpen = false, hasMouthOpen = false;
     bool forceShape = false;
@@ -174,6 +176,8 @@ int main(int argc, char** argv) {
             masksInvert = true;
         } else if (a == "--opaque") {
             opaqueAll = true;
+        } else if (a == "--no-physics") {
+            physicsOff = true;
         } else if (a == "--eye-open" && i + 1 < argc) {
             eyeOpen = float(std::atof(argv[++i]));
             hasEyeOpen = true;
@@ -287,6 +291,7 @@ int main(int argc, char** argv) {
     if (noMasks) pet.debugSetDisableMasks(true);
     if (masksInvert) pet.debugSetForceInvertedMask(true);
     if (opaqueAll) pet.debugSetForceOpaque(true);
+    if (physicsOff) pet.debugSetPhysics(false);
     if (hasEyeOpen) pet.debugSetEyeOpen(eyeOpen);
     if (hasMouthOpen) pet.debugSetMouthOpen(mouthOpen);
     if (!onlyList.empty()) pet.debugSetOnly(parseIntList(onlyList));

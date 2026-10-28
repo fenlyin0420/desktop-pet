@@ -109,6 +109,21 @@ bool Live2DModel::load(CubismCore& core, GLContext& gl, const std::string& model
     const char** partIds = core.GetPartIds(model_);
     for (int i = 0; i < partCount; ++i) partIndex_[partIds[i]] = i;
 
+    // 物理演算：model3.json 引用 physics3.json 才加载，失败不影响模型本身
+    const json::Value& physRef = refs["Physics"];
+    if (!physRef.str().empty()) {
+        const std::string physPath = base + "/" + physRef.str();
+        std::string physErr;
+        if (physics_.load(physPath, paramIndex_, &physErr)) {
+            logLine("物理：已加载 %s（%d 组，%s fps）", physRef.str().c_str(), physics_.subRigCount(),
+                    physics_.fps() > 0.0f ? "固定" : "跟随帧率");
+        } else {
+            logLine("物理：加载失败，模型按无物理渲染：%s", physErr.c_str());
+        }
+    } else {
+        logLine("物理：model3.json 未引用 physics3.json，跳过");
+    }
+
     // drawable
     drawableCount_ = core.GetDrawableCount(model_);
     const int* texIndices = core.GetDrawableTextureIndices(model_);
@@ -185,6 +200,7 @@ void Live2DModel::destroy(GLContext& gl) {
     paramIndex_.clear();
     partIndex_.clear();
     drawableCount_ = 0;
+    physics_.destroy();
 }
 
 float Live2DModel::effectiveOpacity(int drawableIndex, const float* drawableOpacities) const {
@@ -314,7 +330,10 @@ void Live2DModel::update(float dt) {
     setParam("ParamHairSide", std::sin(time_ * 0.9f + 1.0f) * 0.3f);
     setParam("ParamHairBack", std::sin(time_ * 0.8f + 2.0f) * 0.25f);
 
-    // 外部钉住的参数必须在 UpdateModel 之前写，否则形变不会生效
+    // 物理演算：输入是上面刚写入的参数，输出写回参数后才会参与本帧形变
+    physics_.evaluate(*core_, model_, dt);
+
+    // 外部钉住的参数必须在 UpdateModel 之前写，否则形变不会生效；也要盖过物理输出
     for (const auto& kv : pinnedParams_) setParam(kv.first, kv.second);
 
     core_->UpdateModel(model_);

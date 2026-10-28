@@ -73,6 +73,7 @@ void Pet::reloadModel(GLContext& gl) {
     layout.offsetX = cfg_->l2dOffset.x;
     layout.offsetY = cfg_->l2dOffset.y;
     fresh->setLayout(layout);
+    fresh->setPhysicsEnabled(cfg_->physics);
     model_ = std::move(fresh);
     modelFallback_ = false;
     logLine("Live2D 模型已加载：%s", modelPath.c_str());
@@ -137,6 +138,10 @@ void Pet::debugSetForceInvertedMask(bool on) {
 
 void Pet::debugSetForceFull(bool on) {
     if (model_) model_->setForceFull(on);
+}
+
+void Pet::debugSetPhysics(bool on) {
+    if (model_) model_->setPhysicsEnabled(on);
 }
 
 void Pet::debugSetOnly(const std::vector<int>& v) {

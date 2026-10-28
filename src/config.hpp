@@ -32,6 +32,7 @@ struct Config {
     // Linux 版语义：l2dCorrect 是相对“铺满窗口”的缩放系数（1.0 = 正好铺满）
     float l2dCorrect = 1.0f;
     bool l2dFlipX = false;
+    bool physics = true;  // linux.physics：是否应用 physics3.json 物理演算
     Vec2f l2dOffset;
     Vec2f handOffset;
     // ---- 模式

@@ -34,6 +34,7 @@ public:
     void debugSetParam(const std::string& id, float value);
     void debugSetRespectVisible(bool on);
     void debugSetForceFull(bool on);
+    void debugSetPhysics(bool on);
     void debugSetDisableMasks(bool on);
     void debugSetForceInvertedMask(bool on);
     void debugSetForceOpaque(bool on);
