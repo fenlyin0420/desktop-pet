@@ -249,7 +249,7 @@ void Pet::handleGlobalInput(std::vector<InputEvent>& events, const GlobalInput& 
             if (ev.code == kVkAlt) alt_ = ev.type == InputEvent::Type::KeyDown;
         }
         if (ev.type == InputEvent::Type::KeyDown) {
-            if (ctrl_ && shift_) {
+            if (ctrl_ && shift_ && alt_) {
                 if (ev.code == kVkT) {
                     toggleLock();
                     continue;
@@ -266,8 +266,6 @@ void Pet::handleGlobalInput(std::vector<InputEvent>& events, const GlobalInput& 
                     quit_ = true;
                     continue;
                 }
-            }
-            if (alt_) {
                 if (ev.code == kVk0) {
                     model_->setMouthFormOverride(0.0f);
                 }
