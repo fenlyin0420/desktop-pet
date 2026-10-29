@@ -17,6 +17,14 @@ static const int kVkT = 0x54;
 static const int kVkH = 0x48;
 static const int kVkR = 0x52;
 static const int kVkQ = 0x51;
+static const int kVk0 = 0x30;
+static const int kVk1 = 0x31;
+static const int kVk2 = 0x32;
+static const int kVk3 = 0x33;
+static const int kVk4 = 0x34;
+static const int kVk5 = 0x35;
+static const int kVk6 = 0x36;
+static const int kVk7 = 0x37;
 
 static std::string imagePath(const Config& cfg, const std::string& rel) { return cfg.assetDir + "/" + rel; }
 
@@ -257,6 +265,32 @@ void Pet::handleGlobalInput(std::vector<InputEvent>& events, const GlobalInput& 
                 if (ev.code == kVkQ) {
                     quit_ = true;
                     continue;
+                }
+            }
+            if (alt_) {
+                if (ev.code == kVk0) {
+                    model_->setMouthFormOverride(0.0f);
+                }
+                if (ev.code == kVk1) {
+                    model_->setMouthFormOverride(1.0f);
+                }
+                if (ev.code == kVk2) {
+                    model_->setMouthFormOverride(2.0f);
+                }
+                if (ev.code == kVk3) {
+                    model_->setMouthFormOverride(3.0f);
+                }
+                if (ev.code == kVk4) {
+                    model_->setMouthFormOverride(4.0f);
+                }
+                if (ev.code == kVk5) {
+                    model_->setMouthFormOverride(5.0f);
+                }
+                if (ev.code == kVk6) {
+                    model_->setMouthFormOverride(6.0f);
+                }
+                if (ev.code == kVk7) {
+                    model_->setMouthFormOverride(7.0f);
                 }
             }
             pressKey(ev.code);

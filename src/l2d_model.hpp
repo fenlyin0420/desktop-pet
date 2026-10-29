@@ -44,6 +44,7 @@ public:
     void setAutoBlink(bool on) { autoBlink_ = on; }
     void setPhysicsEnabled(bool on) { physics_.setEnabled(on); }
     bool hasPhysics() const { return physics_.valid(); }
+    void setMouthFormOverride(float v);
 
     // 布局：correct 为整体缩放系数，offset 为相对画布尺寸的归一化偏移（y 正向下）
     struct Layout {
@@ -140,6 +141,7 @@ private:
     bool breath_ = true;
     bool autoBlink_ = true;
     float blink_ = 1.0f;  // 眼睛开合（1 = 睁开）
+    float mouthFormOverride_ = 0.0f;  // 嘴部键盘表情覆盖
 
     std::vector<float> vertexScratch_;
     std::vector<float> uvScratch_;

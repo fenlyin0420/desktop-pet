@@ -221,7 +221,7 @@ void Live2DModel::applyDefaults() {
     const char* neutral[] = {"ParamAngleX", "ParamAngleY", "ParamAngleZ", "ParamEyeBallX", "ParamEyeBallY", "ParamBodyAngleX",
                              "ParamBodyAngleY", "ParamBodyAngleZ", "ParamMouthOpenY", "ParamEyeLSmile", "ParamEyeRSmile",
                              "ParamBrowLY", "ParamBrowRY", "ParamBrowLAngle", "ParamBrowRAngle", "ParamBrowLForm",
-                             "ParamBrowRForm", "ParamHairFront", "ParamHairSide", "ParamHairBack", nullptr};
+                             "ParamBrowRForm", "ParamHairFront", "ParamHairSide", "ParamHairBack", "ParamMouthForm", nullptr};
     for (int i = 0; neutral[i]; ++i) setParam(neutral[i], 0.0f);
 }
 
@@ -258,6 +258,8 @@ void Live2DModel::setLook(float x, float y) {
 }
 
 void Live2DModel::setMouthOpen(float v) { mouthOpen_ = clampf(v, 0.0f, 1.0f); }
+
+void Live2DModel::setMouthFormOverride(float v) { mouthFormOverride_ = clampf(v, 0.0f, 7.0f); }
 
 void Live2DModel::setEyeSmile(float v) { eyeSmile_ = clampf(v, 0.0f, 1.0f); }
 
@@ -329,6 +331,8 @@ void Live2DModel::update(float dt) {
     setParam("ParamHairFront", std::sin(time_ * 1.1f) * 0.35f);
     setParam("ParamHairSide", std::sin(time_ * 0.9f + 1.0f) * 0.3f);
     setParam("ParamHairBack", std::sin(time_ * 0.8f + 2.0f) * 0.25f);
+    // 键盘表情
+    setParam("ParamMouthForm", mouthFormOverride_);
 
     // 物理演算：输入是上面刚写入的参数，输出写回参数后才会参与本帧形变
     physics_.evaluate(*core_, model_, dt);
