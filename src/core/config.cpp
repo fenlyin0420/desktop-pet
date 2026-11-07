@@ -1,0 +1,283 @@
+#include "config.hpp"
+
+#include <algorithm>
+#include <cstdarg>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
+#include <filesystem>
+#include <mutex>
+#include <system_error>
+
+#include "file_io.hpp"
+#include "json.hpp"
+#include "platform/paths.hpp"
+
+namespace fx {
+namespace {
+
+namespace fs = std::filesystem;
+
+std::string envOr(const char* name, const std::string& fallback) {
+    const char* v = std::getenv(name);
+    return (v && *v) ? std::string(v) : fallback;
+}
+
+fs::path toPath(const std::string& utf8) { return fs::u8path(utf8); }
+
+bool exists(const std::string& p) {
+    std::error_code ec;
+    return fs::exists(toPath(p), ec);
+}
+
+bool isDir(const std::string& p) {
+    std::error_code ec;
+    return fs::is_directory(toPath(p), ec);
+}
+
+bool endsWithNoCase(const std::string& value, const std::string& suffix) {
+    if (value.size() < suffix.size()) return false;
+    const size_t offset = value.size() - suffix.size();
+    for (size_t i = 0; i < suffix.size(); ++i) {
+        const unsigned char a = static_cast<unsigned char>(value[offset + i]);
+        const unsigned char b = static_cast<unsigned char>(suffix[i]);
+        const unsigned char la = (a >= 'A' && a <= 'Z') ? static_cast<unsigned char>(a - 'A' + 'a') : a;
+        const unsigned char lb = (b >= 'A' && b <= 'Z') ? static_cast<unsigned char>(b - 'A' + 'a') : b;
+        if (la != lb) return false;
+    }
+    return true;
+}
+
+void scanModels(const fs::path& dir, std::vector<std::string>& out) {
+    std::error_code ec;
+    fs::directory_iterator it(dir, fs::directory_options::skip_permission_denied, ec);
+    const fs::directory_iterator end;
+    for (; it != end; it.increment(ec)) {
+        if (ec) break;
+        std::error_code fileEc;
+        if (!it->is_regular_file(fileEc)) continue;
+        const std::string name = it->path().filename().u8string();
+        if (endsWithNoCase(name, ".model3.json")) out.push_back(it->path().u8string());
+    }
+}
+
+std::string joinChecked(const std::string& a, const std::string& b) { return platform::joinPath(a, b); }
+
+std::vector<std::string> candidateAssetDirs(const std::string& base) {
+    return {
+        envOr("FXPET_ASSETS", ""),
+        base + "/assets",
+        base,
+        std::string("assets"),
+        base + "/../assets",
+    };
+}
+
+std::vector<KeyGroup> readKeyGroups(const json::Value& v) {
+    std::vector<KeyGroup> out;
+    if (!v.isArray()) return out;
+    for (size_t i = 0; i < v.size(); ++i) {
+        const json::Value& entry = v.at(i);
+        KeyGroup g;
+        if (entry.isArray()) {
+            for (size_t k = 0; k < entry.size(); ++k) g.push_back(entry.at(k).integer());
+        } else if (entry.type() == json::Value::Type::Number) {
+            g.push_back(entry.integer());
+        }
+        out.push_back(g);
+    }
+    return out;
+}
+
+Vec2f readVec2(const json::Value& v, Vec2f def) {
+    if (!v.isArray() || v.size() < 2) return def;
+    return Vec2f{static_cast<float>(v.at(0).num(def.x)), static_cast<float>(v.at(1).num(def.y))};
+}
+
+}  // namespace
+
+std::string findModel3(const std::string& assetDir) {
+    if (assetDir.empty()) return std::string();
+    std::vector<std::string> hits;
+
+    // 扁平布局：<assetDir>/<模型名>/<模型名>.model3.json
+    std::error_code ec;
+    fs::directory_iterator it(toPath(assetDir), fs::directory_options::skip_permission_denied, ec);
+    const fs::directory_iterator end;
+    for (; it != end; it.increment(ec)) {
+        if (ec) break;
+        std::error_code dirEc;
+        if (!it->is_directory(dirEc)) continue;
+        scanModels(it->path(), hits);
+    }
+    // 其次 <assetDir>/*.model3.json
+    if (hits.empty()) scanModels(toPath(assetDir), hits);
+
+    std::sort(hits.begin(), hits.end());
+    return hits.empty() ? std::string() : hits.front();
+}
+
+void resolvePaths(Config& cfg) {
+    cfg.baseDir = platform::exeDir();
+    cfg.assetDir.clear();
+    for (const std::string& cand : candidateAssetDirs(cfg.baseDir)) {
+        if (cand.empty()) continue;
+        std::string dir = cand;
+        if (dir.size() > 1 && (dir.back() == '/' || dir.back() == '\\')) dir.pop_back();
+        // 资源目录 = 图片/模型直接放在其下（没有 img/standard 中间层）
+        if (!isDir(dir)) continue;
+        if (!findModel3(dir).empty() || exists(joinChecked(dir, "config.json"))) {
+            cfg.assetDir = dir;
+            break;
+        }
+    }
+    if (cfg.assetDir.empty()) cfg.assetDir = joinChecked(cfg.baseDir, "assets");
+
+    cfg.configPath = envOr("FXPET_CONFIG", joinChecked(cfg.assetDir, "config.json"));
+    if (!exists(cfg.configPath) && exists(joinChecked(cfg.baseDir, "config.json"))) {
+        cfg.configPath = joinChecked(cfg.baseDir, "config.json");
+    }
+
+    cfg.statePath = joinChecked(platform::configHome(), "state.ini");
+    cfg.logPath = joinChecked(platform::stateHome(), "fxpet.log");
+}
+
+void logLine(const char* fmt, ...) {
+    static std::mutex logMutex;
+    static std::string path;
+    if (path.empty()) path = platform::joinPath(platform::stateHome(), "fxpet.log");
+
+    char message[4096];
+    va_list ap;
+    va_start(ap, fmt);
+    std::vsnprintf(message, sizeof(message), fmt, ap);
+    va_end(ap);
+
+    char tbuf[32];
+    std::time_t t = std::time(nullptr);
+    std::tm tmv{};
+#ifdef _WIN32
+    localtime_s(&tmv, &t);
+#else
+    localtime_r(&t, &tmv);
+#endif
+    std::strftime(tbuf, sizeof(tbuf), "%H:%M:%S", &tmv);
+
+    std::string line;
+    line.reserve(std::strlen(message) + 16);
+    line += '[';
+    line += tbuf;
+    line += "] ";
+    line += message;
+    line += '\n';
+
+    std::lock_guard<std::mutex> lock(logMutex);
+    appendFile(path, line, nullptr);
+}
+
+bool loadConfig(Config& cfg, std::string* error) {
+    // 与 Windows 版一致的默认键位表（VK 码）
+    if (cfg.standardHand.empty()) {
+        cfg.standardHand = {{9}, {49}, {50}, {51}, {52}, {16}, {81}, {87}, {69}, {82}, {32}, {65}, {83}, {68}, {70}};
+    }
+    if (cfg.mouseLeft.empty()) cfg.mouseLeft = {{1}};
+    if (cfg.mouseRight.empty()) cfg.mouseRight = {{2}};
+    if (cfg.mouseSide.empty()) cfg.mouseSide = {{5}, {6}};
+
+    json::Value root;
+    if (!json::loadFile(cfg.configPath, root, error)) return false;
+    if (!root.isObject()) return false;
+
+    const json::Value& dec = root["decoration"];
+    if (dec.isObject()) {
+        cfg.windowW = dec["window_size"].at(0).integer(cfg.windowW);
+        cfg.windowH = dec["window_size"].at(1).integer(cfg.windowH);
+        cfg.scalarX = static_cast<float>(dec["scalar"].at(0).num(1.0));
+        cfg.scalarY = static_cast<float>(dec["scalar"].at(1).num(1.0));
+        cfg.framerate = dec["framerateLimit"].integer(cfg.framerate);
+        cfg.topWindow = dec["topWindow"].boolean(true);
+        cfg.leftHanded = dec["leftHanded"].boolean(true);
+        cfg.l2dOffset = readVec2(dec["l2d_offset"], cfg.l2dOffset);
+        cfg.handOffset = readVec2(dec["hand_offset"], cfg.handOffset);
+        cfg.mouseForceMove = dec["mouse_force_move"].boolean(true);
+        cfg.mouseSpeed = static_cast<float>(dec["mouse_speed"].num(1.0));
+    }
+    if (cfg.scalarX <= 0.05f) cfg.scalarX = 1.0f;
+    if (cfg.scalarY <= 0.05f) cfg.scalarY = 1.0f;
+    if (cfg.windowW < 64) cfg.windowW = 612;
+    if (cfg.windowH < 64) cfg.windowH = 354;
+    if (cfg.framerate < 5 || cfg.framerate > 240) cfg.framerate = 60;
+
+    const json::Value& std_ = root["standard"];
+    if (std_.isObject()) {
+        if (std_.has("l2d")) cfg.standardL2d = std_["l2d"].boolean(true);
+        if (std_.has("mouse")) cfg.standardMouse = std_["mouse"].boolean(true);
+        if (std_["hand"].isArray()) cfg.standardHand = readKeyGroups(std_["hand"]);
+        if (std_["face"].isArray()) cfg.standardFace = readKeyGroups(std_["face"]);
+        if (std_["mouse_left"].isArray() && std_["mouse_left"].size()) cfg.mouseLeft = readKeyGroups(std_["mouse_left"]);
+        if (std_["mouse_right"].isArray() && std_["mouse_right"].size()) cfg.mouseRight = readKeyGroups(std_["mouse_right"]);
+        if (std_["mouse_side"].isArray() && std_["mouse_side"].size()) cfg.mouseSide = readKeyGroups(std_["mouse_side"]);
+    }
+    if (root.has("mode")) cfg.mode = root["mode"].integer(0);
+
+    // 兼容旧字段名 "linux" 与新字段名 "render"
+    const json::Value& renderCfg = root.has("render") ? root["render"] : root["linux"];
+    if (renderCfg.isObject()) {
+        cfg.l2dCorrect = static_cast<float>(renderCfg["l2d_scale"].num(1.0));
+        cfg.l2dFlipX = renderCfg["l2d_flip_x"].boolean(false);
+        cfg.physics = renderCfg["physics"].boolean(true);
+        if (cfg.l2dCorrect <= 0.05f) cfg.l2dCorrect = 1.0f;
+        if (renderCfg.has("hand_part")) cfg.handPart = renderCfg["hand_part"].str();
+        if (renderCfg.has("hand_drawables")) {
+            cfg.handDrawables.clear();
+            const std::string list = renderCfg["hand_drawables"].str();
+            size_t start = 0;
+            while (start < list.size()) {
+                const size_t comma = list.find(',', start);
+                const std::string piece =
+                    list.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+                if (!piece.empty()) cfg.handDrawables.push_back(std::atoi(piece.c_str()));
+                if (comma == std::string::npos) break;
+                start = comma + 1;
+            }
+        }
+    }
+    return true;
+}
+
+bool loadState(Config& cfg, State& st) {
+    (void)cfg;
+    std::vector<uint8_t> bytes;
+    if (!readFile(cfg.statePath, bytes, nullptr)) return false;
+    std::string text(bytes.begin(), bytes.end());
+    size_t start = 0;
+    while (start < text.size()) {
+        size_t end = text.find('\n', start);
+        if (end == std::string::npos) end = text.size();
+        std::string line = text.substr(start, end - start);
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        int a = 0;
+        int b = 0;
+        int c = 0;
+        int d = 0;
+        if (std::sscanf(line.c_str(), "window=%d,%d,%d,%d", &a, &b, &c, &d) == 4) {
+            st.window = Rect{a, b, c, d};
+        } else if (std::sscanf(line.c_str(), "locked=%d", &a) == 1) {
+            st.locked = a != 0;
+        } else if (std::sscanf(line.c_str(), "visible=%d", &a) == 1) {
+            st.visible = a != 0;
+        }
+        start = end + 1;
+    }
+    return true;
+}
+
+bool saveState(const Config& cfg, const State& st) {
+    char text[256];
+    std::snprintf(text, sizeof(text), "window=%d,%d,%d,%d\nlocked=%d\nvisible=%d\n", st.window.x, st.window.y,
+                  st.window.w, st.window.h, st.locked ? 1 : 0, st.visible ? 1 : 0);
+    return writeFile(cfg.statePath, text, std::strlen(text), nullptr);
+}
+
+}  // namespace fx

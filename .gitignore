@@ -1,6 +1,9 @@
 build/
+.deps/
+build_*.log
 compile_commands.json
 lib/*.a
 lib/*.so
+lib/*.dll
 lib/live2d/
 .cache/
